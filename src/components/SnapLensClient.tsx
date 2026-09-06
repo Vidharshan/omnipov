@@ -1,13 +1,23 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Camera, Film, History, Send, Upload, CheckCircle2, Play, Sparkles, RefreshCw } from 'lucide-react'
-import { initResumableUploadSession, logUploadedMedia } from '@/app/actions/uploadActions'
+import { Camera, Film, History, Send, CheckCircle2, Play, Sparkles, RefreshCw } from 'lucide-react'
+
+interface MediaItem {
+  id: string
+  created_at: string
+  thumbnail_url: string
+  view_url: string
+}
+
+interface EventRecord {
+  qr_slug: string
+}
 
 interface SnapLensProps {
   slug: string
-  event: any
-  initialMedia: any[]
+  event: EventRecord
+  initialMedia: MediaItem[]
 }
 
 export default function SnapLensClient({ slug, event, initialMedia }: SnapLensProps) {
@@ -19,6 +29,7 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [mediaList, setMediaList] = useState(initialMedia)
   const [historySlugs, setHistorySlugs] = useState<string[]>([])
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -29,9 +40,9 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
       if (!stored.includes(slug)) {
         const updated = [slug, ...stored]
         localStorage.setItem('pov_history_slugs', JSON.stringify(updated))
-        setHistorySlugs(updated)
+        queueMicrotask(() => setHistorySlugs(updated))
       } else {
-        setHistorySlugs(stored)
+        queueMicrotask(() => setHistorySlugs(stored))
       }
     }
   }, [slug])
@@ -44,6 +55,14 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
       setUploadSuccess(false)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [previewUrl])
 
   const triggerCamera = () => {
     fileInputRef.current?.click()
@@ -72,7 +91,7 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
           try {
             const res = JSON.parse(xhr.responseText)
             if (res.success && res.media) {
-              setMediaList([res.media, ...mediaList])
+              setMediaList((prev) => [res.media, ...prev])
               setUploading(false)
               setUploadSuccess(true)
               setUploadProgress(100)
@@ -101,8 +120,9 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
       }
 
       xhr.send(selectedFile)
-    } catch (err: any) {
-      alert(err.message || 'Failed to upload video')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to upload video'
+      alert(message)
       setUploading(false)
     }
   }
@@ -197,8 +217,8 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-white">Record Event Moment</h3>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Tap below to open your camera and capture a raw fragment for the host's cloud gallery.
+                    <p className="text-xs text-slate-400 mt-1">
+                    Tap below to open your camera and capture a raw fragment for the host&apos;s cloud gallery.
                   </p>
                 </div>
                 <button
@@ -228,18 +248,35 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {mediaList.map((item) => (
-                  <div key={item.id} className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-900 border border-slate-800 group">
-                    <iframe
-                      src={item.view_url}
-                      className="w-full h-full object-cover pointer-events-none"
-                      allow="autoplay"
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedMedia(item)}
+                    className="relative aspect-[9/16] rounded-xl overflow-hidden bg-slate-900 border border-slate-800 group text-left"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.thumbnail_url || item.view_url}
+                      alt="Uploaded video thumbnail"
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                      <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg">
+                        <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                      </div>
+                      <span className="text-[10px] text-white/80 font-medium">Tap to open preview</span>
+                    </div>
+                    <div className="absolute bottom-0 inset-x-0 p-2 flex items-end justify-between gap-2">
                       <span className="text-[10px] text-white/70 font-mono">
                         {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
+                      <span className="text-[10px] text-white/60 font-mono bg-black/30 px-2 py-0.5 rounded-full">
+                        Preview
+                      </span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -316,6 +353,39 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
           <Film className="w-5 h-5" /> Gallery
         </button>
       </div>
+
+      {selectedMedia && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setSelectedMedia(null)}
+        >
+          <div
+            className="w-full max-w-3xl bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <div>
+                <h4 className="text-sm font-semibold text-white">Clip preview</h4>
+                <p className="text-[11px] text-slate-400 font-mono truncate">{selectedMedia.view_url}</p>
+              </div>
+              <button
+                onClick={() => setSelectedMedia(null)}
+                className="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="aspect-video bg-black">
+              <iframe
+                src={selectedMedia.view_url}
+                className="w-full h-full"
+                allow="autoplay; fullscreen"
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

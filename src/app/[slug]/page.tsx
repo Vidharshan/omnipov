@@ -24,7 +24,7 @@ export default async function EventGuestPage({ params }: PageProps) {
   // Fetch media for gallery
   const { data: media } = await supabase
     .from('media')
-    .select('*')
+    .select('id, event_id, google_file_id, thumbnail_url, view_url, created_at')
     .eq('event_id', event.id)
     .order('created_at', { ascending: false })
 
