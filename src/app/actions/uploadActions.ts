@@ -2,6 +2,7 @@
 
 import { createClient } from '@/utils/supabase/server'
 import { getOAuth2Client } from '@/lib/googleDrive'
+import { headers } from 'next/headers'
 import { google } from 'googleapis'
 
 export async function initResumableUploadSession(slug: string, fileName: string, mimeType: string) {
@@ -31,7 +32,12 @@ export async function initResumableUploadSession(slug: string, fileName: string,
     throw new Error('Failed to obtain Google access token')
   }
 
-  // 2. Request Resumable Upload Session URI directly from Google Drive API
+  // Get request origin for Google Drive CORS support
+  const headerList = await headers()
+  const rawOrigin = headerList.get('origin') || headerList.get('referer') || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+  const origin = rawOrigin.startsWith('http') ? rawOrigin : `https://${rawOrigin}`
+
+  // 2. Request Resumable Upload Session URI directly from Google Drive API with Origin header for CORS
   const initRes = await fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable',
     {
@@ -40,6 +46,7 @@ export async function initResumableUploadSession(slug: string, fileName: string,
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'X-Upload-Content-Type': mimeType || 'video/mp4',
+        'Origin': origin,
       },
       body: JSON.stringify({
         name: fileName || `POV_Clip_${Date.now()}.mp4`,

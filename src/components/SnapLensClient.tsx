@@ -53,50 +53,45 @@ export default function SnapLensClient({ slug, event, initialMedia }: SnapLensPr
     if (!selectedFile) return
     try {
       setUploading(true)
-      setUploadProgress(5)
+      setUploadProgress(10)
 
-      // 1. Get Resumable Upload Session URL from server
-      const { uploadUrl, eventId } = await initResumableUploadSession(
-        slug,
-        selectedFile.name,
-        selectedFile.type
-      )
+      const uploadEndpoint = `/api/upload?slug=${encodeURIComponent(slug)}&fileName=${encodeURIComponent(selectedFile.name)}&mimeType=${encodeURIComponent(selectedFile.type || 'video/mp4')}`
 
-      setUploadProgress(20)
-
-      // 2. Perform resumable upload directly to Google Drive
       const xhr = new XMLHttpRequest()
-      xhr.open('PUT', uploadUrl, true)
-      xhr.setRequestHeader('Content-Type', selectedFile.type || 'video/mp4')
+      xhr.open('POST', uploadEndpoint, true)
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 80) + 20
+          const percent = Math.round((e.loaded / e.total) * 90)
           setUploadProgress(percent)
         }
       }
 
-      xhr.onload = async () => {
-        if (xhr.status === 200 || xhr.status === 201) {
-          const response = JSON.parse(xhr.responseText)
-          const googleFileId = response.id
-          const viewUrl = `https://drive.google.com/file/d/${googleFileId}/preview`
-          const thumbnailUrl = `https://drive.google.com/thumbnail?id=${googleFileId}&sz=w800`
-
-          // 3. Log into Supabase
-          const newMedia = await logUploadedMedia(eventId, googleFileId, viewUrl, thumbnailUrl)
-          setMediaList([newMedia, ...mediaList])
-
-          setUploading(false)
-          setUploadSuccess(true)
-          setUploadProgress(100)
-          setTimeout(() => {
-            setSelectedFile(null)
-            setPreviewUrl(null)
-            setActiveTab('gallery')
-          }, 1500)
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          try {
+            const res = JSON.parse(xhr.responseText)
+            if (res.success && res.media) {
+              setMediaList([res.media, ...mediaList])
+              setUploading(false)
+              setUploadSuccess(true)
+              setUploadProgress(100)
+              setTimeout(() => {
+                setSelectedFile(null)
+                setPreviewUrl(null)
+                setActiveTab('gallery')
+              }, 1500)
+            } else {
+              alert(res.error || 'Upload failed')
+              setUploading(false)
+            }
+          } catch {
+            alert('Invalid server response')
+            setUploading(false)
+          }
         } else {
-          throw new Error('Upload failed')
+          alert('Upload failed with status ' + xhr.status)
+          setUploading(false)
         }
       }
 
