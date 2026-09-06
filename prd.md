@@ -1,0 +1,42 @@
+📝 Technical Product Requirement Document (PRD)Project Name: Omni POV (Working Title) — "The Kahoot of Crowd-Sourced Event Video"🎯 1. Product Overview & Core Vision: Omni POV is an ultra-low friction, web-based crowdsourcing media platform designed to capture authentic multi-POV video and photo content at live events (weddings, concerts, parties).Borrowing the "Enter Code / Scan QR to Play" convenience of Kahoot and combining it with the "Capture ➡️ Send" velocity of Snapchat, the platform allows participants to immediately capture and stream video directly to the event host's personal cloud infrastructure. By operating on a Bring Your Own Storage (BYOS) model, the platform bypasses startup cloud storage costs and data egress vulnerabilities entirely.👥 2. User Personas & Core Workflows👤 Persona A: The Event Host (Organizer, Bride/Groom, Videographer)Goal: Collect high-quality, raw video fragments from multiple angles without managing complex tech or paying massive hosting fees.Workflow:Authenticates via Google OAuth and selects an active Google Account.App calculates remaining Google Drive storage capacity to ensure adequate headroom.Host enters an event name to automatically generate a custom QR Code and a distinct slug (e.g., ://omnipov.vidharshana.dev).Downloads/prints the auto-generated high-resolution QR placement kit.👤 Persona B: The Participant (Event Guest)Goal: Instantly document and view moments during the event without downloading apps, creating accounts, or entering passwords.Workflow:Scans the table QR code; the device web browser directly executes the app container.Natively records or imports a video file via a Snapchat-inspired full-screen interface.Presses "Send" to push the stream immediately into the cloud.Navigates to the side tabs to browse the live collective gallery or check their historical event footprint.🎨 3. System Architecture & Tech StackThe application relies on a Serverless TypeScript Stack built entirely on edge infrastructure to minimize latency and structural operating costs.ComponentTechnical SelectionImplementation ContextFrontend FrameworkNext.js 15+ (App Router)Renders highly responsive, edge-cached web application layouts optimized for mobile devices.Backend & ComputeNext.js Server ActionsSecurely coordinates background API requests, access tokens, and cloud pathways without public API exposure.Database & SecuritySupabase (PostgreSQL)Manages relational storage mappings, event status metadata, and handles Google OAuth authentication sequences.Styling LibraryTailwind CSSPowers utility-first responsive component rendering matching native app design patterns.Deployment PlatformVercel Edge NetworkHosts the globally distributed client interfaces ensuring rapid loading times upon QR scan.🔄 System Data Pipeline: "Zero-Touch" Streaming Execution[Guest Interface] ──(1. Get Upload URL)──► [Next.js Server Action] ──(2. Fetch Token)──► [Supabase DB]
+       │                                              │
+       │                                       (3. Request Session)
+       │                                              │
+       ▼                                              ▼
+[Natively Records] ───(4. Resumable Chunk Streams)───► [Google Drive API Node]
+       │
+ (5. Complete Signal)
+       │
+       ▼
+[Log Thumbnail Link] ────────────────────────────────► [Supabase DB Media Table]
+🗄️ 4. Database Schema Design (Supabase/PostgreSQL)sql-- 1. HOSTS TABLE: Stores authorization references
+CREATE TABLE hosts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    google_refresh_token TEXT NOT NULL, -- Securely encrypted at rest
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 2. EVENTS TABLE: Configures target collection pathways
+CREATE TABLE events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    qr_slug TEXT UNIQUE NOT NULL, -- e.g., 'smith-wedding-2026'
+    host_id UUID REFERENCES hosts(id) ON DELETE CASCADE NOT NULL,
+    google_folder_id TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+CREATE INDEX idx_events_slug ON events(qr_slug);
+
+-- 3. MEDIA TABLE: Caches lightweight visual references for the live gallery
+CREATE TABLE media (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID REFERENCES events(id) ON DELETE CASCADE NOT NULL,
+    google_file_id TEXT NOT NULL,
+    thumbnail_url TEXT NOT NULL,
+    view_url TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+CREATE INDEX idx_media_event_timeline ON media(event_id, created_at DESC);
+Use code with caution.🛠️ 5. Technical Feature Specifications⚡ 5.1 Onboarding & BYOS Verification (Host Portal)Google Drive Integration: The application requests the specific auth/drive.file scope through Google OAuth. This configuration isolates the platform's write capabilities exclusively to the folders it creates, bypassing expensive tier-3 security auditing profiles.Automatic Provisioning: On successful authorization, the server executes a remote folder provisioning pipeline, automatically updating access rules to "Anyone with the link can view" via the Google Drive Permissions API so that participants can read the streams later.📸 5.2 The "SnapLens" Camera UI (Participant Portal)Zero-Friction Layout: A sticky multi-tab layout optimized for mobile Viewports: [ 🕒 History ] [ 📷 Capture (Default) ] [ 🎬 Gallery ].Native Camera Hooking: The platform bypasses custom in-browser camera layers (which frequently trigger hardware hangs) by implementing native system integration tags:html<input type="file" accept="video/*" capture="environment" class="hidden" id="camera-trigger" />
+Use code with caution.Capture-to-Send UX: When a recording completes, the interface transforms into a preview player featuring a single prominent, centralized "Send" button matching Snapchat's core structural dynamic.🚀 5.3 Resumable Chunked Upload EngineSession Initialization: Clicking "Send" triggers a Next.js Server Action that retrieves the host's active access token, prompts Google's endpoints, and passes a unique Resumable Upload Session URI back to the guest browser.Client-Side Upload Streaming: The guest device partitions the raw media file into sequential binary blocks (e.g., chunks of 5MB) and executes asynchronous PUT streams directly to the Google session address. This ensures network dropouts do not corrupt the capture.🎬 5.4 High-Performance Collective Event GalleryAsynchronous Logging: Once the direct upload finishes, the client reports the payload metadata back to the Next.js Server Action to populate the media table.Edge Optimization: The Gallery tab reads instantly from Supabase via Next.js cache layers, rendering video previews dynamically via the native Next.js <Image> component utilizing lazy evaluation. Clicking a card spawns an overlay displaying a direct HTML5 <video> player pointing to the Google streaming link.🕒 5.5 Participant Event History & Consolidated EditsDevice Footprint Persistence: To maintain complete user anonymity without imposing logins, the system stores a list of visited event IDs within the user's mobile browser localStorage.Consolidated Footprint Interface: The History tab reads these local array markers to output an analytical compilation of all public events the participant has documented.Commercial Upsell Strategy: This screen contains a promotional layout for an automated system capable of running an asynchronous Cloud Function (e.g., using FFmpeg layers) to stitch the user's historical videos into a single "Consolidated Highlight Edit" document, generating a natural conversion funnel to premium account tiers.🛡️ 6. Non-Functional & Security SafeguardsClient-Side Pre-Compression: To optimize bandwidth footprints, the client pipeline processes input assets via lightweight in-browser media transcoders prior to server dispatch, converting oversized raw files down to targeted H.264 web standards.Upload Rate-Limiting Protection: Implements system-level guardrails tracking client IP allocations to restrict single-device usage parameters (e.g., capping media uploads at 15 files per distinct user session) to avoid abuse profiles.
